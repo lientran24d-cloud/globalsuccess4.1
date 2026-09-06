@@ -4,13 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vui học tiếng Anh cùng Ms Linda - Lớp 4</title>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Supabase SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700;800&display=swap" rel="stylesheet">
-    <!-- Canvas Confetti -->
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     
     <script>
@@ -45,7 +41,6 @@
 <body class="text-slate-800 min-h-screen py-8 px-4 sm:px-6 relative">
 
     <div class="max-w-4xl mx-auto space-y-8 pt-4">
-        
         <header class="text-center mb-8 relative">
             <div class="inline-block bg-white px-10 py-5 rounded-3xl shadow-lg border-4 border-bamboo-400 mb-4 animate-bounce-gentle">
                 <h1 id="main-title" class="text-3xl sm:text-4xl font-extrabold text-bamboo-600 flex flex-col items-center justify-center gap-2">
@@ -112,7 +107,7 @@
         </section>
     </div>
 
-    <!-- MODAL -->
+    <!-- MODAL KẾT QUẢ CẬP NHẬT MỚI -->
     <div id="result-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-2xl border-8 border-sunny-400 transform scale-95 transition-transform duration-300" id="modal-content">
             <div class="text-6xl mb-2" id="modal-emoji" style="position: relative;">🎉</div>
@@ -231,12 +226,6 @@
             } catch (err) { console.error("Lỗi:", err); }
         }
 
-        function buildDynamicExplanation(qObj) {
-            let ans = String(qObj.correct_answer || "").trim();
-            let qText = String(qObj.question || "").replace(/<[^>]*>?/gm, '').trim();
-            return `<div class="space-y-2 mt-2 text-[15px] leading-relaxed text-slate-700"><p><b>① Vì sao đáp án đúng:</b> Cô Ms. Linda khen con, đáp án chính xác là "<b>${ans.replace(/\|/g, ' / ')}</b>".</p></div>`;
-        }
-
         async function fetchExercises() {
             try {
                 let query = supabaseClient.from('exercises').select('*').eq('unit', CURRENT_UNIT).eq('book_id', BOOK_ID).order('display_order', { ascending: true });
@@ -250,7 +239,6 @@
                     if (q.question_type === 'multiple_choice' || q.question_type === 'matching' || q.component_name === 'DropdownImage') {
                         if (typeof q.options === 'string') try { q.options = JSON.parse(q.options); } catch(e){}
                     }
-                    q.explanation = buildDynamicExplanation(q);
                 });
 
                 exercisesData = data;
@@ -616,6 +604,9 @@
         }
         window.resetAllProgress = function() { if(confirm("Con có muốn xóa tiến độ và làm lại từ đầu không?")) { localStorage.removeItem(STORAGE_KEY); location.reload(); } }
 
+        // ==========================================
+        // CƠ CHẾ NỘP BÀI (HỖ TRỢ NỘP DỞ DANG + CHI TIẾT ĐÁNH GIÁ)
+        // ==========================================
         window.submitLesson = async function() {
             const nameContainer = document.getElementById('name-container');
             const studentNameInput = document.getElementById('student-name');
@@ -625,153 +616,174 @@
             if (!studentName) {
                 nameContainer.classList.add('ring-4', 'ring-red-300', 'animate-bounce', 'bg-red-50');
                 setTimeout(() => nameContainer.classList.remove('animate-bounce'), 1000);
-                warning.innerHTML = `⚠️ <b>Con nhập tên xinh đẹp của mình ở góc trên cùng trước khi nộp bài nhé!</b>`;
+                warning.innerHTML = `⚠️ <b>Con nhập tên trước khi nộp bài nhé!</b>`;
                 warning.classList.remove('hidden'); window.scrollTo({ top: 0, behavior: 'smooth' }); studentNameInput.focus();
                 return;
             } else nameContainer.classList.remove('ring-4', 'ring-red-300', 'bg-red-50');
 
+            const totalQs = exercisesData.length;
             const answeredCount = Object.keys(userAnswers).length;
-            if (answeredCount < exercisesData.length) {
-                warning.innerHTML = `⚠️ Con mới làm <b>${answeredCount}/${exercisesData.length}</b> câu. Cố gắng hoàn thành nốt nhé!`;
-                warning.classList.remove('hidden'); window.scrollTo({ top: 0, behavior: 'smooth' }); return; 
+            
+            if (answeredCount < totalQs) {
+                if(!confirm(`Con mới làm ${answeredCount}/${totalQs} câu. Con có muốn NỘP TẠM để cô xem tiến độ, ngày mai mở ra làm tiếp không?`)) {
+                    return; 
+                }
             }
 
             const btn = document.getElementById('main-submit-btn');
-            btn.innerHTML = `<div class="spinner border-t-white w-6 h-6 mr-2"></div> Cô Linda đang chấm điểm...`;
+            btn.innerHTML = `<div class="spinner border-t-white w-6 h-6 mr-2"></div> Đang gửi cho Cô Linda...`;
             btn.disabled = true; warning.classList.add('hidden');
 
-            let score = 0; let mistakesList = [];
+            let score = 0; 
+            let mistakesCount = 0;
+            let unattemptedCount = 0;
+            let detailedFeedback = [];
             
             exercisesData.forEach(ex => {
                 try {
                     const qItem = document.getElementById(`q-item-${ex.id}`);
                     if (!qItem) return;
                     const feedbackDiv = document.getElementById(`feedback-${ex.id}`);
-                    let isCorrect = false; let correctDisplay = ex.correct_answer || "";
+                    
+                    let userStr = userAnswers[ex.id];
+                    let isCorrect = false; 
+                    let correctDisplay = ex.correct_answer || "";
+
+                    if (userStr === undefined || userStr.trim() === "") {
+                        unattemptedCount++;
+                        qItem.classList.add('opacity-70'); 
+                        return; 
+                    }
+
+                    let userDisplayStr = userStr;
 
                     if (ex.question_type === 'input' || ex.question_type === 'matching' || ex.component_name === 'DropdownImage') {
                         const inputs = document.querySelectorAll(`input[data-qid="${ex.id}"], select[data-qid="${ex.id}"]`);
                         if (inputs.length > 0) {
                             inputs.forEach(inp => inp.disabled = true); 
-                            const userStr = userAnswers[ex.id] || "";
                             isCorrect = normalizeString(userStr) === normalizeString(ex.correct_answer);
                             
                             inputs.forEach(input => {
                                 if (isCorrect) {
                                     input.classList.add('bg-bamboo-100', 'text-bamboo-700', 'border-bamboo-500');
-                                    input.classList.remove('bg-fae8ff', 'color-c026d3', 'bg-sky-50', 'pointer-events-none', 'bg-slate-100');
+                                    input.classList.remove('bg-fae8ff', 'color-c026d3', 'bg-sky-50');
                                 } else {
                                     input.classList.add('bg-red-100', 'text-red-700', 'border-red-500', 'line-through');
                                     input.classList.remove('bg-fae8ff', 'color-c026d3', 'bg-sky-50');
+                                    if(input.tagName === 'SELECT' && input.options[input.selectedIndex]) {
+                                        userDisplayStr = input.options[input.selectedIndex].text;
+                                    }
                                 }
                             });
                             const clearBtns = qItem.querySelectorAll('button[onclick^="clearReorder"]');
                             if (clearBtns.length > 0) clearBtns.forEach(b => b.remove());
-                            correctDisplay = ex.display_correct_answer || ex.correct_answer.replace(/\|/g, '<br/>➔ ');
+                            correctDisplay = ex.display_correct_answer || ex.correct_answer.replace(/\|/g, ' / ');
                         }
                     } else if (Array.isArray(ex.options)) {
                         let options = ex.options;
-                        const userStr = userAnswers[ex.id];
                         const safeCorrectAns = String(ex.correct_answer || "").trim();
                         isCorrect = (userStr === safeCorrectAns);
+                        
                         const correctOpt = options.find(o => String(o.id).trim() === safeCorrectAns);
                         correctDisplay = correctOpt ? correctOpt.text : ex.correct_answer;
+                        
+                        const userOpt = options.find(o => String(o.id).trim() === userStr);
+                        userDisplayStr = userOpt ? userOpt.text : userStr;
 
                         options.forEach(opt => {
                             const optBtn = document.querySelector(`button[data-qid="${ex.id}"][data-optid="${opt.id}"]`);
                             if (optBtn) {
-                                const indicator = optBtn.querySelector('.indicator-circle');
+                                optBtn.disabled = true;
                                 if (String(opt.id).trim() === safeCorrectAns) {
                                     optBtn.className = `option-btn w-full text-left p-3 rounded-xl border-2 bg-bamboo-50 border-bamboo-500 text-bamboo-700 font-bold text-base flex items-center gap-3 shadow-sm`;
-                                    if (indicator) indicator.className = 'inline-block min-w-[2.5rem] px-3 h-8 rounded-full bg-bamboo-500 text-white flex items-center justify-center border border-bamboo-500 shrink-0 indicator-circle font-bold text-sm shadow-sm';
-                                    if (!optBtn.innerHTML.includes('✅')) optBtn.innerHTML += ' <span class="ml-auto text-2xl">✅</span>';
                                 } else if (opt.id === userStr && !isCorrect) {
                                     optBtn.className = `option-btn w-full text-left p-3 rounded-xl border-2 bg-red-50 border-red-500 text-red-700 font-bold text-base flex items-center gap-3 shadow-sm opacity-80`;
-                                    if (indicator) indicator.className = 'inline-block min-w-[2.5rem] px-3 h-8 rounded-full bg-red-500 text-white flex items-center justify-center border border-red-500 shrink-0 indicator-circle font-bold text-sm shadow-sm';
-                                    if (!optBtn.innerHTML.includes('❌')) optBtn.innerHTML += ' <span class="ml-auto text-2xl">❌</span>';
                                 }
                             }
                         });
                     }
 
-                    if (feedbackDiv) {
-                        feedbackDiv.classList.remove('hidden');
-                        if (isCorrect) {
-                            score++;
-                            qItem.classList.add('border-2', 'border-bamboo-200', 'bg-bamboo-50');
-                            qItem.classList.remove('border-slate-200', 'bg-white');
-                            feedbackDiv.innerHTML = `<div class="font-extrabold text-bamboo-600 mt-2 flex items-center justify-center bg-white py-2 rounded-xl border border-bamboo-200 shadow-sm text-sm sm:text-base p-2">✨ Giỏi quá! Cô Ms. Linda khen con, đáp án đúng là: <b class="ml-1">${correctDisplay}</b> ✨</div>`;
-                        } else {
-                            mistakesList.push(ex.english_title || ex.exercise_name);
-                            qItem.classList.add('border-2', 'border-red-300', 'bg-red-50');
-                            qItem.classList.remove('border-slate-200', 'bg-white');
+                    let exTitle = ex.english_title || ex.exercise_name;
+                    if (isCorrect) {
+                        score++;
+                        qItem.classList.add('border-2', 'border-bamboo-200', 'bg-bamboo-50');
+                        if (feedbackDiv) {
+                            feedbackDiv.classList.remove('hidden');
+                            feedbackDiv.innerHTML = `<div class="font-extrabold text-bamboo-600 mt-2 bg-white py-2 rounded-xl text-center shadow-sm p-2">✨ Chính xác! ✨</div>`;
+                        }
+                    } else {
+                        mistakesCount++;
+                        qItem.classList.add('border-2', 'border-red-300', 'bg-red-50');
+                        
+                        detailedFeedback.push(`<li class="mb-2 pb-2 border-b border-slate-200/50 last:border-0"><span class="font-bold text-sky-700">${exTitle}:</span> Con điền <span class="text-red-500 line-through font-bold">"${userDisplayStr.replace(/\|/g, ' ')}"</span> ➔ Phải là: <span class="text-bamboo-600 font-bold">"${correctDisplay}"</span></li>`);
+                        
+                        if (feedbackDiv) {
+                            feedbackDiv.classList.remove('hidden');
                             feedbackDiv.innerHTML = `
-                                <div class="mt-4 bg-sky-50 border-2 border-sky-300 rounded-xl p-4 flex gap-4 items-start shadow-sm relative overflow-hidden">
-                                    <div class="text-5xl animate-bounce-gentle z-10">👩‍🏫</div>
-                                    <div class="w-full z-10">
-                                        <h4 class="font-black text-sky-800 text-xl mb-2 border-b border-sky-200 pb-2">HƯỚNG DẪN TỪ CÔ MS. LINDA:</h4>
-                                        <div class="bg-white p-3 rounded-lg font-bold border border-red-200 mb-3 shadow-sm flex flex-wrap items-center gap-2">
+                                <div class="mt-4 bg-sky-50 border-2 border-sky-300 rounded-xl p-4 flex gap-4 items-start shadow-sm">
+                                    <div class="w-full">
+                                        <div class="bg-white p-3 rounded-lg font-bold border border-red-200 mb-3 shadow-sm flex items-center gap-2">
                                             <span class="text-red-500 text-2xl">❌</span> 
-                                            <span class="text-slate-700 w-full mb-1">Chưa chính xác rồi, đáp án đúng phải là:</span> 
-                                            <div class="bg-bamboo-100 text-bamboo-700 px-3 py-2 rounded-md border border-bamboo-300 text-lg w-full">${correctDisplay}</div>
+                                            <div class="w-full"><div class="text-slate-500 text-sm font-normal">Đáp án đúng phải là:</div><div class="text-bamboo-700 text-lg">${correctDisplay}</div></div>
                                         </div>
                                     </div>
                                 </div>
                             `;
                         }
                     }
-                } catch (err) { console.error("Lỗi khi chấm câu:", ex.id, err); }
+                } catch (err) { console.error("Lỗi khi chấm:", ex.id, err); }
             });
 
-            const totalQs = exercisesData.length;
-            let uniqueMistakes = Array.from(new Set(mistakesList));
-            let recommendations = `Xuất sắc! Con nắm rất vững kiến thức ${CURRENT_UNIT}.`;
-            if (uniqueMistakes.length > 0) recommendations = "Cần ôn tập lại ở: " + uniqueMistakes.join(', ') + ".";
+            let progressStatus = unattemptedCount > 0 ? `Đang làm (${answeredCount}/${totalQs})` : 'Đã hoàn thành';
+            let recommendationsHTML = "";
+            
+            if (unattemptedCount > 0) {
+                recommendationsHTML += `<div class="mb-2 text-sky-600 font-bold flex items-center gap-1"><span>⏳</span> Lộ trình: Con còn ${unattemptedCount} câu chưa làm. Nhớ mở app làm tiếp nhé!</div>`;
+            }
+            if (detailedFeedback.length > 0) {
+                recommendationsHTML += `<div class="font-bold text-red-500 mb-1">Các câu làm sai:</div><ul class="list-none m-0 p-0 text-sm">${detailedFeedback.join('')}</ul>`;
+            } else if (unattemptedCount === 0) {
+                recommendationsHTML = `<div class="text-bamboo-600 font-bold flex items-center gap-1"><span>🏆</span> Tuyệt vời! Con đã hoàn thành đúng 100% bài tập.</div>`;
+            }
 
             supabaseClient.from('results').insert([{
                 student_name: studentName,
-                book_id: BOOK_ID,
-                unit: CURRENT_UNIT,
-                exercises_done: 'Đã hoàn thành',
+                book_id: (typeof BOOK_ID !== 'undefined' ? BOOK_ID : null),
+                unit: (typeof CURRENT_UNIT !== 'undefined' ? CURRENT_UNIT : ''),
+                exercises_done: progressStatus,
                 correct_count: score,
-                incorrect_count: totalQs - score,
-                recommendations: recommendations
-            }]).then(({ error }) => { if (error) console.error("Lỗi liên thông:", error); });
+                incorrect_count: mistakesCount,
+                recommendations: recommendationsHTML
+            }]).then(({ error }) => { 
+                if (error) console.error("Lỗi liên thông:", error); 
+                else {
+                    document.getElementById('submit-container').classList.add('hidden');
+                    
+                    document.getElementById('modal-correct-score').innerText = score;
+                    document.getElementById('modal-incorrect-score').innerText = mistakesCount;
+                    
+                    let ratio = score / totalQs;
+                    let message = ""; let emoji = "";
+                    
+                    if (unattemptedCount > 0) {
+                        message = "Tiến độ đã được lưu lại!"; emoji = "⏳";
+                        document.getElementById('modal-score-10').innerText = answeredCount;
+                        document.getElementById('modal-score-10').nextElementSibling.innerText = `/${totalQs} CÂU ĐÃ LÀM`;
+                        document.getElementById('modal-score-10').className = "text-6xl font-black text-sky-500 mb-1";
+                    } else {
+                        const score10 = ((score / totalQs) * 10).toFixed(1).replace('.0', '');
+                        document.getElementById('modal-score-10').innerText = score10;
+                        if (ratio >= 0.8) { message = ratio === 1 ? "Xuất sắc! Điểm tuyệt đối!" : "Rất Giỏi!"; emoji = "🏆"; fireConfetti(); document.getElementById('modal-score-10').className = "text-8xl font-black text-bamboo-600 mb-1"; document.getElementById('sticker-badge').classList.remove('hidden'); } 
+                        else if (ratio >= 0.5) { message = "Khá lắm, cố gắng thêm nhé!"; emoji = "👍"; document.getElementById('modal-score-10').className = "text-8xl font-black text-sunny-500 mb-1"; } 
+                        else { message = "Cố gắng lên nhé, đừng nản chí!"; emoji = "💪"; document.getElementById('modal-score-10').className = "text-8xl font-black text-red-500 mb-1"; }
+                    }
 
-            document.getElementById('submit-container').classList.add('hidden');
-            document.querySelectorAll('.word-bank-words').forEach(el => el.parentElement.remove());
-            localStorage.removeItem(STORAGE_KEY);
-
-            const score10 = ((score / totalQs) * 10).toFixed(1).replace('.0', '');
-            document.getElementById('modal-score-10').innerText = score10;
-            document.getElementById('modal-correct-score').innerText = score;
-            document.getElementById('modal-incorrect-score').innerText = totalQs - score;
-            
-            const ratio = score / totalQs;
-            let message = ""; let emoji = "";
-            let sticker = document.getElementById('sticker-badge');
-            
-            if (ratio >= 0.8) { 
-                message = ratio === 1 ? "Xuất sắc! Điểm tuyệt đối!" : "Rất Giỏi!"; 
-                emoji = "🏆"; 
-                fireConfetti(); 
-                document.getElementById('modal-score-10').className = "text-8xl font-black text-bamboo-600 mb-1"; 
-                sticker.classList.remove('hidden'); 
-            } else if (ratio >= 0.5) { 
-                message = "Khá lắm, cố gắng thêm nhé!"; 
-                emoji = "👍"; 
-                document.getElementById('modal-score-10').className = "text-8xl font-black text-sunny-500 mb-1"; 
-                document.getElementById('modal-title').className = "text-3xl font-extrabold text-sunny-600 mb-2"; 
-            } else { 
-                message = "Cố gắng lên nhé, đừng nản chí!"; 
-                emoji = "💪"; 
-                document.getElementById('modal-score-10').className = "text-8xl font-black text-red-500 mb-1"; 
-                document.getElementById('modal-title').className = "text-3xl font-extrabold text-red-500 mb-2"; 
-            }
-
-            document.getElementById('modal-title').innerText = message; document.getElementById('modal-emoji').innerHTML = emoji;
-            document.getElementById('result-modal').classList.remove('hidden');
-            setTimeout(() => { document.getElementById('modal-content').classList.remove('scale-95'); document.getElementById('modal-content').classList.add('scale-100'); }, 10);
+                    document.getElementById('modal-title').innerText = message; 
+                    document.getElementById('modal-emoji').innerHTML = emoji;
+                    document.getElementById('result-modal').classList.remove('hidden');
+                    setTimeout(() => { document.getElementById('modal-content').classList.remove('scale-95'); document.getElementById('modal-content').classList.add('scale-100'); }, 10);
+                }
+            });
         }
 
         window.closeModal = function() {
